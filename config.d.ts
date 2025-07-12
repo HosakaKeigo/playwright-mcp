@@ -125,4 +125,41 @@ export type Config = {
    * Whether to send image responses to the client. Can be "allow", "omit", or "auto". Defaults to "auto", which sends images if the client can display them.
    */
   imageResponses?: 'allow' | 'omit' | 'auto';
+
+  /**
+   * Configuration for snapshot digestion using Azure AI.
+   */
+  snapshotDigest?: {
+    /**
+     * Whether to enable snapshot digestion.
+     */
+    enabled: boolean;
+
+    /**
+     * Azure deployment name. Defaults to 'gpt-4o-mini'.
+     * Set AZURE_API_KEY and AZURE_RESOURCE_NAME environment variables.
+     */
+    deploymentName?: string;
+
+    /**
+     * Maximum tokens for the digested output. Defaults to 1500.
+     */
+    maxTokens?: number;
+
+    /**
+     * Temperature for the LLM. Defaults to 0.3.
+     */
+    temperature?: number;
+
+    /**
+     * Custom system prompt for snapshot digestion.
+     */
+    systemPrompt?: string;
+
+    /**
+     * User's goal or reason for browsing. This helps optimize the digest to focus on relevant elements.
+     * Example: "Find and fill out the contact form" or "Purchase a blue t-shirt in size M"
+     */
+    goal?: string;
+  };
 };

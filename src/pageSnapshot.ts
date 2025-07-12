@@ -16,6 +16,7 @@
 
 import * as playwright from 'playwright';
 import { callOnPageNoTrace } from './tools/utils.js';
+import { SnapshotDigestService } from './snapshotDigest.js';
 
 type PageEx = playwright.Page & {
   _snapshotForAI: () => Promise<string>;
@@ -24,13 +25,18 @@ type PageEx = playwright.Page & {
 export class PageSnapshot {
   private _page: playwright.Page;
   private _text!: string;
+  private _originalText!: string;
+  private _digestService?: SnapshotDigestService;
+  private _navigationGoal?: string;
 
-  constructor(page: playwright.Page) {
+  constructor(page: playwright.Page, digestService?: SnapshotDigestService, navigationGoal?: string) {
     this._page = page;
+    this._digestService = digestService;
+    this._navigationGoal = navigationGoal;
   }
 
-  static async create(page: playwright.Page): Promise<PageSnapshot> {
-    const snapshot = new PageSnapshot(page);
+  static async create(page: playwright.Page, digestService?: SnapshotDigestService, navigationGoal?: string): Promise<PageSnapshot> {
+    const snapshot = new PageSnapshot(page, digestService, navigationGoal);
     await snapshot._build();
     return snapshot;
   }
@@ -39,12 +45,45 @@ export class PageSnapshot {
     return this._text;
   }
 
+  originalText(): string {
+    return this._originalText;
+  }
+
   private async _build() {
     const snapshot = await callOnPageNoTrace(this._page, page => (page as PageEx)._snapshotForAI());
-    this._text = [
-      `- Page Snapshot`,
+
+    // Store original snapshot
+    this._originalText = [
+      `- Page Snapshot (Original)`,
       '```yaml',
       snapshot,
+      '```',
+    ].join('\n');
+
+    // Try to digest the snapshot if service is available
+    let processedSnapshot = snapshot;
+    if (this._digestService && this._digestService.isEnabled()) {
+      try {
+        const pageUrl = this._page.url();
+        const pageTitle = await this._page.title();
+        const context = `URL: ${pageUrl}, Title: ${pageTitle}`;
+        console.error(`Digesting snapshot for ${pageUrl}...`);
+        
+        // Pass the navigation goal to the digest service
+        processedSnapshot = await this._digestService.digest(snapshot, context, this._navigationGoal);
+        
+        console.error(`Snapshot digested: ${snapshot.length} -> ${processedSnapshot.length} characters`);
+      } catch (error) {
+        console.error('Failed to digest snapshot:', error);
+        // Fall back to original snapshot
+        processedSnapshot = snapshot;
+      }
+    }
+
+    this._text = [
+      `- Page Snapshot${this._digestService?.isEnabled() ? ' (Digested)' : ''}`,
+      '```yaml',
+      processedSnapshot,
       '```',
     ].join('\n');
   }

@@ -92,6 +92,7 @@ export type FullConfig = Config & {
   network: NonNullable<Config['network']>,
   outputDir: string;
   server: NonNullable<Config['server']>,
+  snapshotDigest?: Config['snapshotDigest'],
 };
 
 export async function resolveConfig(config: Config): Promise<FullConfig> {

@@ -26,16 +26,21 @@ const navigate: ToolFactory = captureSnapshot => defineTool({
     description: 'Navigate to a URL',
     inputSchema: z.object({
       url: z.string().describe('The URL to navigate to'),
+      goal: z.string().describe('The goal or purpose of navigating to this page (helps optimize snapshot digestion)'),
     }),
     type: 'destructive',
   },
 
   handle: async (context, params) => {
     const tab = await context.ensureTab();
+    
+    // Set the goal for this navigation
+    tab.setNavigationGoal(params.goal);
+    
     await tab.navigate(params.url);
 
     const code = [
-      `// Navigate to ${params.url}`,
+      `// Navigate to ${params.url} (Goal: ${params.goal})`,
       `await page.goto('${params.url}');`,
     ];
 

@@ -21,6 +21,7 @@ import { callOnPageNoTrace, waitForCompletion } from './tools/utils.js';
 import { ManualPromise } from './manualPromise.js';
 import { Tab } from './tab.js';
 import { outputFile } from './config.js';
+import { SnapshotDigestService } from './snapshotDigest.js';
 
 import type { ImageContent, TextContent } from '@modelcontextprotocol/sdk/types.js';
 import type { ModalState, Tool, ToolActionResult } from './tools/tool.js';
@@ -43,6 +44,7 @@ export class Context {
   private _modalStates: (ModalState & { tab: Tab })[] = [];
   private _pendingAction: PendingAction | undefined;
   private _downloads: { download: playwright.Download, finished: boolean, outputFile: string }[] = [];
+  private _digestService?: SnapshotDigestService;
   clientVersion: { name: string; version: string; } | undefined;
 
   constructor(tools: Tool[], config: FullConfig, browserContextFactory: BrowserContextFactory) {
@@ -50,6 +52,16 @@ export class Context {
     this.config = config;
     this._browserContextFactory = browserContextFactory;
     testDebug('create context');
+
+    // Initialize digest service if configured
+    if (config.snapshotDigest?.enabled) {
+      try {
+        this._digestService = new SnapshotDigestService(config.snapshotDigest);
+      } catch (error) {
+        console.error('Failed to initialize snapshot digest service:', error);
+        // Continue without digest service
+      }
+    }
   }
 
   clientSupportsImages(): boolean {
@@ -271,7 +283,7 @@ ${code.join('\n')}
   }
 
   private _onPageCreated(page: playwright.Page) {
-    const tab = new Tab(this, page, tab => this._onPageClosed(tab));
+    const tab = new Tab(this, page, tab => this._onPageClosed(tab), this._digestService);
     this._tabs.push(tab);
     if (!this._currentTab)
       this._currentTab = tab;

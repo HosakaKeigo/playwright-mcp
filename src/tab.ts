@@ -17,6 +17,7 @@
 import * as playwright from 'playwright';
 
 import { PageSnapshot } from './pageSnapshot.js';
+import { SnapshotDigestService } from './snapshotDigest.js';
 
 import type { Context } from './context.js';
 import { callOnPageNoTrace } from './tools/utils.js';
@@ -28,11 +29,14 @@ export class Tab {
   private _requests: Map<playwright.Request, playwright.Response | null> = new Map();
   private _snapshot: PageSnapshot | undefined;
   private _onPageClose: (tab: Tab) => void;
+  private _digestService?: SnapshotDigestService;
+  private _navigationGoal?: string;
 
-  constructor(context: Context, page: playwright.Page, onPageClose: (tab: Tab) => void) {
+  constructor(context: Context, page: playwright.Page, onPageClose: (tab: Tab) => void, digestService?: SnapshotDigestService) {
     this.context = context;
     this.page = page;
     this._onPageClose = onPageClose;
+    this._digestService = digestService;
     page.on('console', event => this._consoleMessages.push(event));
     page.on('request', request => this._requests.set(request, null));
     page.on('response', response => this._requests.set(response.request(), response));
@@ -114,7 +118,13 @@ export class Tab {
     return this._requests;
   }
 
+  setNavigationGoal(goal: string) {
+    this._navigationGoal = goal;
+  }
+
   async captureSnapshot() {
-    this._snapshot = await PageSnapshot.create(this.page);
+    this._snapshot = await PageSnapshot.create(this.page, this._digestService, this._navigationGoal);
+    // Clear the navigation goal after capturing snapshot
+    this._navigationGoal = undefined;
   }
 }

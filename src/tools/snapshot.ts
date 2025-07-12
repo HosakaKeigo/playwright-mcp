@@ -26,12 +26,17 @@ const snapshot = defineTool({
     name: 'browser_snapshot',
     title: 'Page snapshot',
     description: 'Capture accessibility snapshot of the current page, this is better than screenshot',
-    inputSchema: z.object({}),
+    inputSchema: z.object({
+      goal: z.string().describe('The goal or purpose for capturing this snapshot (helps optimize snapshot digestion)'),
+    }),
     type: 'readOnly',
   },
 
-  handle: async context => {
-    await context.ensureTab();
+  handle: async (context, params) => {
+    const tab = await context.ensureTab();
+    
+    // Set the goal for this snapshot
+    tab.setNavigationGoal(params.goal);
 
     return {
       code: [`// <internal code to capture accessibility snapshot>`],
@@ -48,6 +53,7 @@ const elementSchema = z.object({
 
 const clickSchema = elementSchema.extend({
   doubleClick: z.boolean().optional().describe('Whether to perform a double click instead of a single click'),
+  goal: z.string().describe('The purpose of clicking this element'),
 });
 
 const click = defineTool({
@@ -63,13 +69,16 @@ const click = defineTool({
   handle: async (context, params) => {
     const tab = context.currentTabOrDie();
     const locator = tab.snapshotOrDie().refLocator(params);
+    
+    // Set goal for the next snapshot
+    tab.setNavigationGoal(params.goal);
 
     const code: string[] = [];
     if (params.doubleClick) {
-      code.push(`// Double click ${params.element}`);
+      code.push(`// Double click ${params.element} (Goal: ${params.goal})`);
       code.push(`await page.${await generateLocator(locator)}.dblclick();`);
     } else {
-      code.push(`// Click ${params.element}`);
+      code.push(`// Click ${params.element} (Goal: ${params.goal})`);
       code.push(`await page.${await generateLocator(locator)}.click();`);
     }
 
@@ -93,17 +102,22 @@ const drag = defineTool({
       startRef: z.string().describe('Exact source element reference from the page snapshot'),
       endElement: z.string().describe('Human-readable target element description used to obtain the permission to interact with the element'),
       endRef: z.string().describe('Exact target element reference from the page snapshot'),
+      goal: z.string().describe('The purpose of this drag and drop action'),
     }),
     type: 'destructive',
   },
 
   handle: async (context, params) => {
-    const snapshot = context.currentTabOrDie().snapshotOrDie();
+    const tab = context.currentTabOrDie();
+    const snapshot = tab.snapshotOrDie();
     const startLocator = snapshot.refLocator({ ref: params.startRef, element: params.startElement });
     const endLocator = snapshot.refLocator({ ref: params.endRef, element: params.endElement });
+    
+    // Set goal for the next snapshot
+    tab.setNavigationGoal(params.goal);
 
     const code = [
-      `// Drag ${params.startElement} to ${params.endElement}`,
+      `// Drag ${params.startElement} to ${params.endElement} (Goal: ${params.goal})`,
       `await page.${await generateLocator(startLocator)}.dragTo(page.${await generateLocator(endLocator)});`
     ];
 
@@ -116,22 +130,30 @@ const drag = defineTool({
   },
 });
 
+const hoverSchema = elementSchema.extend({
+  goal: z.string().describe('The purpose of hovering over this element'),
+});
+
 const hover = defineTool({
   capability: 'core',
   schema: {
     name: 'browser_hover',
     title: 'Hover mouse',
     description: 'Hover over element on page',
-    inputSchema: elementSchema,
+    inputSchema: hoverSchema,
     type: 'readOnly',
   },
 
   handle: async (context, params) => {
-    const snapshot = context.currentTabOrDie().snapshotOrDie();
+    const tab = context.currentTabOrDie();
+    const snapshot = tab.snapshotOrDie();
     const locator = snapshot.refLocator(params);
+    
+    // Set goal for the next snapshot
+    tab.setNavigationGoal(params.goal);
 
     const code = [
-      `// Hover over ${params.element}`,
+      `// Hover over ${params.element} (Goal: ${params.goal})`,
       `await page.${await generateLocator(locator)}.hover();`
     ];
 
@@ -148,6 +170,7 @@ const typeSchema = elementSchema.extend({
   text: z.string().describe('Text to type into the element'),
   submit: z.boolean().optional().describe('Whether to submit entered text (press Enter after)'),
   slowly: z.boolean().optional().describe('Whether to type one character at a time. Useful for triggering key handlers in the page. By default entire text is filled in at once.'),
+  goal: z.string().describe('The purpose of typing this text'),
 });
 
 const type = defineTool({
@@ -161,18 +184,22 @@ const type = defineTool({
   },
 
   handle: async (context, params) => {
-    const snapshot = context.currentTabOrDie().snapshotOrDie();
+    const tab = context.currentTabOrDie();
+    const snapshot = tab.snapshotOrDie();
     const locator = snapshot.refLocator(params);
+    
+    // Set goal for the next snapshot
+    tab.setNavigationGoal(params.goal);
 
     const code: string[] = [];
     const steps: (() => Promise<void>)[] = [];
 
     if (params.slowly) {
-      code.push(`// Press "${params.text}" sequentially into "${params.element}"`);
+      code.push(`// Press "${params.text}" sequentially into "${params.element}" (Goal: ${params.goal})`);
       code.push(`await page.${await generateLocator(locator)}.pressSequentially(${javascript.quote(params.text)});`);
       steps.push(() => locator.pressSequentially(params.text));
     } else {
-      code.push(`// Fill "${params.text}" into "${params.element}"`);
+      code.push(`// Fill "${params.text}" into "${params.element}" (Goal: ${params.goal})`);
       code.push(`await page.${await generateLocator(locator)}.fill(${javascript.quote(params.text)});`);
       steps.push(() => locator.fill(params.text));
     }
@@ -194,6 +221,7 @@ const type = defineTool({
 
 const selectOptionSchema = elementSchema.extend({
   values: z.array(z.string()).describe('Array of values to select in the dropdown. This can be a single value or multiple values.'),
+  goal: z.string().describe('The purpose of selecting these options'),
 });
 
 const selectOption = defineTool({
@@ -207,11 +235,15 @@ const selectOption = defineTool({
   },
 
   handle: async (context, params) => {
-    const snapshot = context.currentTabOrDie().snapshotOrDie();
+    const tab = context.currentTabOrDie();
+    const snapshot = tab.snapshotOrDie();
     const locator = snapshot.refLocator(params);
+    
+    // Set goal for the next snapshot
+    tab.setNavigationGoal(params.goal);
 
     const code = [
-      `// Select options [${params.values.join(', ')}] in ${params.element}`,
+      `// Select options [${params.values.join(', ')}] in ${params.element} (Goal: ${params.goal})`,
       `await page.${await generateLocator(locator)}.selectOption(${javascript.formatObject(params.values)});`
     ];
 
