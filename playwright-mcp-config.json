@@ -11,7 +11,5 @@
     "deploymentName": "gpt-4o-mini",
     "maxTokens": 2000,
     "temperature": 0.3
-  },
-  "outputDir": "./output",
-  "saveTrace": true
+  }
 }
